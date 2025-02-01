@@ -1,57 +1,30 @@
 import csv
 
-# All possible words
-words = []
+# All possible words, it should eventually be reduced to a list of length 1, which should be the word that is the answer
+possible_words = []
+
+# All original possible words
+all_words = []
+
+# All possible inputs
+all_inputs = []
 
 def fetchWords(file_path):
     """
-    Loads all words from a CSV file into the global 'words' list.
+    Loads all words from a CSV file into the global 'all_words' and 'possible_words' lists.
     
-    Reads the file, assumes each word is in a new row,
-    and populates the 'words' list with these entries.
+    Reads the file, assumes each word is in a new row, and populates both lists with these entries.
     """
+    global all_words, possible_words, all_inputs
 
-    # Open file
     with open(file_path, mode='r', newline='') as file:
-        # CSV reader
         csv_reader = csv.reader(file)
+        all_words = [row[0] for row in csv_reader]
+        possible_words = all_words.copy()
     
-        # Add all words to words
-        for row in csv_reader:
-            words.append(row[0])
-
-def filterWords(word, positionValues):
-    """
-    Filters the global 'words' list based on the provided word and positional hints.
-    
-    Args:
-        word (str): The word used for filtering.
-        positionValues (list[int]): List of positional hints (length 5):
-            - 0: The letter is not in the answer.
-            - 1: The letter is in the answer but not in the correct position.
-            - 2: The letter is in the correct position.
-    
-    Example:
-        word = "arose"
-        positionValues = [0, 1, 2, 0, 0]
-        Filters words such that:
-        - 'a' is excluded from all words.
-        - 'r' is included but not at position 1.
-        - 'o' must be in position 2.
-    """
-    global words
-    
-    for i in range(5):
-        letter = word[i]
-        # Grey Square - If the letter is not in the word
-        if positionValues[i] == 0:
-            words = list(filter(lambda current_word: letter not in current_word, words))
-        # Yellow Square - If the letter is in the word but not the correct position
-        elif positionValues[i] == 1:
-            words = list(filter(lambda current_word: letter in current_word and letter != current_word[i] and letterCount(current_word, letter) >= letterCount(word, letter), words))
-        # Green Square - If the letter is in the correct position
-        elif positionValues[i] == 2:
-            words = list(filter(lambda current_word: letter == current_word[i], words))
+    with open("all-inputs.csv", mode='r', newline='') as file:
+        csv_reader = csv.reader(file)
+        all_inputs = [row[0] for row in csv_reader]
 
 def fetchData(localWords):
     """
@@ -67,13 +40,11 @@ def fetchData(localWords):
             - 'positions': Positional frequency of each letter.
     """
     alphabet = "abcdefghijklmnopqrstuvwxyz"
-    
-    # Initialize Hash Maps
+
     occurrences = {letter: 0 for letter in alphabet}
     frequencies = {letter: 0 for letter in alphabet}
     positions = {letter: [0] * 5 for letter in alphabet}
 
-    # Analyze each word
     for word in localWords:
         searched_letters = []
         for index, letter in enumerate(word):
@@ -83,7 +54,7 @@ def fetchData(localWords):
                 if letter not in searched_letters:
                     occurrences[letter] += 1
                     searched_letters.append(letter)
-    
+
     return {
         "occurrences": occurrences,
         "frequencies": frequencies,
@@ -92,7 +63,7 @@ def fetchData(localWords):
 
 def letterCount(word, letter):
     """
-    Counts the number of occurrences of a specific letter in a word.
+    Counts the number of occurrences of a specific letter in a word. Used for filterWords method.
     
     Args:
         word (str): The word to search.
@@ -102,6 +73,49 @@ def letterCount(word, letter):
         int: Number of times the letter appears in the word.
     """
     return word.count(letter)
+
+def filterWords(word, positionValues):
+    """
+    Filters the global 'possible_words' list based on the provided word and positional hints.
+    
+    Args:
+        word (str): The word used for filtering.
+        positionValues (list[int]): List of positional hints (length 5):
+            - 0: The letter is not in the answer.
+            - 1: The letter is in the answer but not in the correct position.
+            - 2: The letter is in the correct position.
+    """
+    global possible_words
+
+    for i in range(5):
+        letter = word[i]
+        if positionValues[i] == 0:
+            # Grey Square - Exclude words containing the letter
+            # Only exclude if the letter is not present in other positions with value 1 or 2
+            if letter not in [word[j] for j in range(5) if positionValues[j] in (1, 2)]:
+                possible_words = list(filter(lambda current_word: letter not in current_word, possible_words))
+        elif positionValues[i] == 1:
+            # Yellow Square - Include words with the letter but not at the specific position
+            possible_words = list(filter(
+                lambda current_word: (
+                    letter in current_word and
+                    letter != current_word[i]
+                ),
+                possible_words
+            ))
+        elif positionValues[i] == 2:
+            # Green Square - Include words with the letter at the specific position
+            possible_words = list(filter(lambda current_word: letter == current_word[i], possible_words))
+
+    # Additional filtering to handle multiple occurrences of the same letter
+    for letter in set(word):
+        # Count the number of times the letter appears in the word with position values 1 or 2
+        required_count = sum(1 for i in range(5) if word[i] == letter and positionValues[i] in (1, 2))
+        if required_count > 0:
+            possible_words = list(filter(
+                lambda current_word: current_word.count(letter) >= required_count,
+                possible_words
+            ))
 
 def wordScore(word, data):
     """
@@ -123,47 +137,97 @@ def wordScore(word, data):
             lettersChecked.append(letter)
     return [word, score]
 
+def bestNextWords(numWords, data):
+    scored_words = [wordScore(word, data) for word in possible_words]
+    scored_words.sort(key = lambda x: x[1], reverse=True)
+    bestWords = scored_words[:numWords]
+    return bestWords
+
+def findFillerWords(letters):
+    """
+    Finds words that contain all specified letters.
+    
+    Args:
+        letters (str): A string of letters to search for.
+    
+    Returns:
+        list: A list of words from 'all_words' that contain all the specified letters.
+    
+    Example:
+        letters = "abc"
+        Returns all words that contain 'a', 'b', and 'c'.
+    """
+    # Filter words that contain all letters
+    fillers = [word for word in all_inputs if all(letter in word for letter in letters)]
+    return fillers
+
+def validInput(input):
+    """
+    Returns True if input is a word in all_inputs and if the word is 'filler'
+    Returns False if input is not found in all_inputs
+
+    Args:
+        input (str): Represents what the user inputted as their word
+    
+    Returns:
+        bool: True if input is a valid word and False if input is not a valid word
+    """
+    if input == 'filler': return True
+    if input in all_inputs: return True
+    return False
+
 # Console program
 def main():
     """
     Interactive Wordle helper tool.
     - Displays total possible words and top guesses at the start.
     - Allows input of position values without spaces (e.g., '12000').
+    - Allows users to type 'filler' to find filler words.
     - Ends when only one possible word remains.
     """
+
     # Fetch all words from file
-    fetchWords('possible-answers.csv')
-    print(f"Total words fetched: {len(words)}")
+    fetchWords('all-answers.csv')
+    print(f"Total words fetched: {len(possible_words)}")
 
-    # Analyze initial data and display the top 10 best starting words
-    data = fetchData(words)
-    scored_words = [wordScore(word, data) for word in words]
-    scored_words.sort(key=lambda x: x[1], reverse=True)
+    # Get initial data
+    data = fetchData(possible_words)
+    print("\nTop 10 starting guesses:")
+    startingGuesses = bestNextWords(10, data)
+    for i in range(10):
+        print(f"{i + 1}. {startingGuesses[i][0]} (Score: {startingGuesses[i][1]})")
+    
+    # Game loop
+    while len(possible_words) > 1:
+        print(f"\nPossible words remaining: {len(possible_words)}")
+        user_word = input("Enter your word (or type 'filler' to find filler words): ").strip().lower()
 
-    print("\nTop 10 starting guesses based on letter statistics:")
-    for i, (word, score) in enumerate(scored_words[:10], 1):
-        print(f"{i}. {word} (Score: {score})")
+        while validInput(user_word) == False:
+            print(f"\nInvalid Word: {user_word}. Try Again!")
+            user_word = input("Enter your word (or type 'filler' to find filler words): ").strip().lower()
 
-    # Main game loop
-    while len(words) > 1:
-        print(f"\nPossible words remaining: {len(words)}")
-        user_word = input("Enter your word: ").strip().lower()
+        if user_word == "filler":
+            letters = input("Enter letters to search for filler words: ").strip().lower()
+            filler_words = findFillerWords(letters)
+            print("\nFiller words:")
+            print(", ".join(filler_words))
+            continue
+
         position_values = list(map(int, list(input("Enter the position values (e.g., 12000): ").strip())))
 
         # Filter words based on user input
         filterWords(user_word, position_values)
 
-        if len(words) == 1:
-            print(f"\nThe answer is: {words[0]}")
-            break
-
-        # Update data for remaining words
-        data = fetchData(words)
-        print(f"\nTop 10 possible words based on current statistics:")
-        scored_words = [wordScore(word, data) for word in words]
-        scored_words.sort(key=lambda x: x[1], reverse=True)
-        for i, (word, score) in enumerate(scored_words[:10], 1):
-            print(f"{i}. {word} (Score: {score})")
+        if len(possible_words) == 1:
+            print(f"\nThe answer is: {possible_words[0]}")
+        else:
+            # Update data for remaining words
+            data = fetchData(possible_words)
+            print(f"\nTop 10 possible words:")
+            nextWords = bestNextWords(10, data)
+            for i in range(len(nextWords)):
+                print(f"{i + 1}. {nextWords[i][0]} (Score: {nextWords[i][1]})")
+            print(f"\nBest next word: {nextWords[0][0]}")
 
 if __name__ == "__main__":
     main()
