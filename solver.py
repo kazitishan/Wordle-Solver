@@ -176,6 +176,10 @@ def validInput(input):
     if input in all_inputs: return True
     return False
 
+def reset():
+    global possible_words
+    possible_words = all_words.copy()
+
 # Console program
 def main():
     """
